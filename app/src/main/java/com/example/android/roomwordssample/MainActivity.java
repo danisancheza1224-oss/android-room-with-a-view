@@ -16,8 +16,12 @@ package com.example.android.roomwordssample;
  * limitations under the License.
  */
 
+import androidx.activity.result.ActivityResult;
+import androidx.activity.result.ActivityResultCallback;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.lifecycle.Observer;
-import androidx.lifecycle.ViewModelProviders;
+import androidx.lifecycle.ViewModelProvider;
 import android.content.Intent;
 import android.os.Bundle;
 import androidx.annotation.Nullable;
@@ -26,7 +30,10 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.appcompat.widget.Toolbar;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
+import android.widget.Button;
 import android.widget.Toast;
 
 import java.util.List;
@@ -34,9 +41,27 @@ import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
-    public static final int NEW_WORD_ACTIVITY_REQUEST_CODE = 1;
-
     private WordViewModel mWordViewModel;
+
+    private final ActivityResultLauncher<Intent> mStartForResult = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            new ActivityResultCallback<ActivityResult>() {
+                @Override
+                public void onActivityResult(ActivityResult result) {
+                    if (result.getResultCode() == RESULT_OK) {
+                        Intent data = result.getData();
+                        if (data != null) {
+                            Word word = new Word(data.getStringExtra(NewWordActivity.EXTRA_REPLY));
+                            mWordViewModel.insert(word);
+                        }
+                    } else {
+                        Toast.makeText(
+                                getApplicationContext(),
+                                R.string.empty_not_saved,
+                                Toast.LENGTH_LONG).show();
+                    }
+                }
+            });
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -52,7 +77,7 @@ public class MainActivity extends AppCompatActivity {
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
         // Get a new or existing ViewModel from the ViewModelProvider.
-        mWordViewModel = ViewModelProviders.of(this).get(WordViewModel.class);
+        mWordViewModel = new ViewModelProvider(this).get(WordViewModel.class);
 
         // Add an observer on the LiveData returned by getAlphabetizedWords.
         // The onChanged() method fires when the observed data changes and the activity is
@@ -65,27 +90,54 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        Button deleteSelectedButton = findViewById(R.id.button_delete_selected);
+        deleteSelectedButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                List<Word> selectedWords = adapter.getSelectedWords();
+                if (selectedWords.isEmpty()) {
+                    Toast.makeText(MainActivity.this, "No words selected", Toast.LENGTH_SHORT).show();
+                } else {
+                    for (Word word : selectedWords) {
+                        mWordViewModel.deleteWord(word);
+                    }
+                    adapter.clearSelection();
+                    Toast.makeText(MainActivity.this, "Deleted selected words", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+
         FloatingActionButton fab = findViewById(R.id.fab);
         fab.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 Intent intent = new Intent(MainActivity.this, NewWordActivity.class);
-                startActivityForResult(intent, NEW_WORD_ACTIVITY_REQUEST_CODE);
+                mStartForResult.launch(intent);
             }
         });
     }
 
-    public void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        // Inflate the menu; this adds items to the action bar if it is present.
+        getMenuInflater().inflate(R.menu.menu_main, menu);
+        return true;
+    }
 
-        if (requestCode == NEW_WORD_ACTIVITY_REQUEST_CODE && resultCode == RESULT_OK) {
-            Word word = new Word(data.getStringExtra(NewWordActivity.EXTRA_REPLY));
-            mWordViewModel.insert(word);
-        } else {
-            Toast.makeText(
-                    getApplicationContext(),
-                    R.string.empty_not_saved,
-                    Toast.LENGTH_LONG).show();
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        int id = item.getItemId();
+
+        if (id == R.id.clear_data) {
+            // Add a toast just for confirmation
+            Toast.makeText(this, "Clearing the data...",
+                    Toast.LENGTH_SHORT).show();
+
+            // Delete the existing data
+            mWordViewModel.deleteAll();
+            return true;
         }
+
+        return super.onOptionsItemSelected(item);
     }
 }
